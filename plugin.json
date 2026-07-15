@@ -1,0 +1,191 @@
+{
+  "id": "com.paca.time-logging",
+  "displayName": "Time Logging",
+  "description": "Lets project members manually log time spent on tasks (date, duration, note) and view per-member totals for a project.",
+  "version": "0.1.0",
+  "permissions": ["db.read", "db.write", "events.subscribe"],
+  "customPermissions": [
+    {
+      "key": "time_logging.manage_all",
+      "label": "Manage all time logs",
+      "description": "Edit or delete any project member's time log entries, not just their own.",
+      "scope": "project"
+    }
+  ],
+  "backend": {
+    "eventSubscriptions": ["task.deleted"],
+    "routes": [
+      {
+        "method": "GET",
+        "path": "/projects/:projectId/tasks/:taskId/time-logs",
+        "middlewares": [
+          { "name": "optionalAuthn" },
+          { "name": "requireFreshPassword" },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": ["tasks.read"]
+          }
+        ]
+      },
+      {
+        "method": "POST",
+        "path": "/projects/:projectId/tasks/:taskId/time-logs",
+        "middlewares": [
+          { "name": "optionalAuthn" },
+          { "name": "requireFreshPassword" },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": ["tasks.write"]
+          }
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/projects/:projectId/tasks/:taskId/time-logs/:logId",
+        "middlewares": [
+          { "name": "optionalAuthn" },
+          { "name": "requireFreshPassword" },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": ["tasks.write"]
+          }
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/projects/:projectId/tasks/:taskId/time-logs/:logId",
+        "middlewares": [
+          { "name": "optionalAuthn" },
+          { "name": "requireFreshPassword" },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": ["tasks.write"]
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/projects/:projectId/time-logs/me",
+        "middlewares": [
+          { "name": "optionalAuthn" },
+          { "name": "requireFreshPassword" },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": ["projects.read"]
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/projects/:projectId/time-logs",
+        "middlewares": [
+          { "name": "optionalAuthn" },
+          { "name": "requireFreshPassword" },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": ["projects.read"]
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/projects/:projectId/time-logs/summary",
+        "middlewares": [
+          { "name": "optionalAuthn" },
+          { "name": "requireFreshPassword" },
+          {
+            "name": "requirePermissions",
+            "scope": "project",
+            "permissions": ["projects.read"]
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/time-logs/summary-all",
+        "middlewares": [
+          { "name": "optionalAuthn" },
+          { "name": "requireFreshPassword" },
+          {
+            "name": "requirePermissions",
+            "scope": "global",
+            "permissions": ["users.write"]
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/time-logs/all",
+        "middlewares": [
+          { "name": "optionalAuthn" },
+          { "name": "requireFreshPassword" },
+          {
+            "name": "requirePermissions",
+            "scope": "global",
+            "permissions": ["users.write"]
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/time-logs/users-all",
+        "middlewares": [
+          { "name": "optionalAuthn" },
+          { "name": "requireFreshPassword" },
+          {
+            "name": "requirePermissions",
+            "scope": "global",
+            "permissions": ["users.write"]
+          }
+        ]
+      }
+    ]
+  },
+  "frontend": {
+    "remoteEntryUrl": "/plugins/com.paca.time-logging/assets/remoteEntry.js",
+    "extensionPoints": [
+      {
+        "point": "task.detail.section",
+        "component": "TimeLogsSection",
+        "order": 20
+      },
+      {
+        "point": "project.page",
+        "component": "ProjectTimeTrackingPage",
+        "order": 20
+      },
+      {
+        "point": "admin.page",
+        "component": "AdminTimeTrackingPage",
+        "order": 20
+      }
+    ],
+    "navItems": [
+      {
+        "scope": "project",
+        "slug": "time-tracking",
+        "label": "Time Tracking",
+        "icon": "Clock",
+        "component": "ProjectTimeTrackingPage",
+        "order": 20
+      },
+      {
+        "scope": "admin",
+        "slug": "time-tracking",
+        "label": "Time Tracking",
+        "icon": "Clock",
+        "component": "AdminTimeTrackingPage",
+        "order": 20
+      }
+    ]
+  },
+  "mcp": {
+    "remoteEntryUrl": "/plugins-mcp/com.paca.time-logging/mcp.js"
+  }
+}
