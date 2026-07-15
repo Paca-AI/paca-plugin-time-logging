@@ -17,10 +17,14 @@ func nowStr() string {
 	return time.Now().UTC().Format(time.RFC3339Nano)
 }
 
-// permManageAllTimeLogs is the plugin's one custom permission (declared in
-// plugin.json), letting a role edit/delete time log entries that belong to
-// other project members. Without it, a caller may only modify their own
-// entries — see (*timeLoggingPlugin).canModify.
+// permManageAllTimeLogs is declared twice in plugin.json — once with
+// scope "project" (grantable per project role) and once with scope
+// "global" (grantable instance-wide) — sharing this one key. Either grant
+// lets a caller create, edit, or delete time log entries attributed to other
+// project members; a global grant applies in every project because
+// paca.permission_check merges the caller's global and project permissions
+// for project-scoped checks. Without either, a caller may only act on their
+// own entries — see (*timeLoggingPlugin).canModify.
 const permManageAllTimeLogs = "time_logging.manage_all"
 
 // timeLoggingPlugin implements plugin.Plugin.
@@ -54,6 +58,9 @@ func (p *timeLoggingPlugin) Init(ctx *plugin.Context) error {
 	ctx.Route("GET", "/time-logs/summary-all", p.timeLogsSummaryAll)
 	ctx.Route("GET", "/time-logs/all", p.listAllTimeLogs)
 	ctx.Route("GET", "/time-logs/users-all", p.timeLogsUsersAll)
+	ctx.Route("GET", "/time-logs/viewer-all", p.viewerAll)
+	ctx.Route("PATCH", "/time-logs/all/:logId", p.updateTimeLogGlobal)
+	ctx.Route("DELETE", "/time-logs/all/:logId", p.deleteTimeLogGlobal)
 
 	return nil
 }

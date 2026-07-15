@@ -2,7 +2,7 @@
   "id": "com.paca.time-logging",
   "displayName": "Time Logging",
   "description": "Lets project members manually log time spent on tasks (date, duration, note) and view per-member totals for a project.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "permissions": ["db.read", "db.write", "events.subscribe"],
   "customPermissions": [
     {
@@ -10,6 +10,24 @@
       "label": "Manage all time logs",
       "description": "Edit or delete any project member's time log entries, not just their own.",
       "scope": "project"
+    },
+    {
+      "key": "time_logging.view_all",
+      "label": "View all time logs",
+      "description": "View the project-wide time tracking page listing every member's logged time, not just their own. Does not affect per-task time log visibility, which any project member can already see via tasks.read.",
+      "scope": "project"
+    },
+    {
+      "key": "time_logging.view_all",
+      "label": "View all time logs",
+      "description": "View logged time summaries and entries across every project, not just the ones they're a member of.",
+      "scope": "global"
+    },
+    {
+      "key": "time_logging.manage_all",
+      "label": "Manage all time logs",
+      "description": "Edit or delete any project member's time log entries, across every project.",
+      "scope": "global"
     }
   ],
   "backend": {
@@ -89,7 +107,7 @@
           {
             "name": "requirePermissions",
             "scope": "project",
-            "permissions": ["projects.read"]
+            "permissions": ["time_logging.view_all"]
           }
         ]
       },
@@ -102,7 +120,7 @@
           {
             "name": "requirePermissions",
             "scope": "project",
-            "permissions": ["projects.read"]
+            "permissions": ["time_logging.view_all"]
           }
         ]
       },
@@ -115,7 +133,7 @@
           {
             "name": "requirePermissions",
             "scope": "global",
-            "permissions": ["users.write"]
+            "permissions": ["time_logging.view_all"]
           }
         ]
       },
@@ -128,7 +146,7 @@
           {
             "name": "requirePermissions",
             "scope": "global",
-            "permissions": ["users.write"]
+            "permissions": ["time_logging.view_all"]
           }
         ]
       },
@@ -141,7 +159,46 @@
           {
             "name": "requirePermissions",
             "scope": "global",
-            "permissions": ["users.write"]
+            "permissions": ["time_logging.view_all"]
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/time-logs/viewer-all",
+        "middlewares": [
+          { "name": "optionalAuthn" },
+          { "name": "requireFreshPassword" },
+          {
+            "name": "requirePermissions",
+            "scope": "global",
+            "permissions": ["time_logging.view_all"]
+          }
+        ]
+      },
+      {
+        "method": "PATCH",
+        "path": "/time-logs/all/:logId",
+        "middlewares": [
+          { "name": "optionalAuthn" },
+          { "name": "requireFreshPassword" },
+          {
+            "name": "requirePermissions",
+            "scope": "global",
+            "permissions": ["time_logging.manage_all"]
+          }
+        ]
+      },
+      {
+        "method": "DELETE",
+        "path": "/time-logs/all/:logId",
+        "middlewares": [
+          { "name": "optionalAuthn" },
+          { "name": "requireFreshPassword" },
+          {
+            "name": "requirePermissions",
+            "scope": "global",
+            "permissions": ["time_logging.manage_all"]
           }
         ]
       }
@@ -173,7 +230,8 @@
         "label": "Time Tracking",
         "icon": "Clock",
         "component": "ProjectTimeTrackingPage",
-        "order": 20
+        "order": 20,
+        "requiredPermission": "time_logging.view_all"
       },
       {
         "scope": "admin",
@@ -181,7 +239,8 @@
         "label": "Time Tracking",
         "icon": "Clock",
         "component": "AdminTimeTrackingPage",
-        "order": 20
+        "order": 20,
+        "requiredPermission": "time_logging.view_all"
       }
     ]
   },

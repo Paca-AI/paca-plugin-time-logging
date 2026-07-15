@@ -17,7 +17,6 @@ import type { TimeLog } from "./types";
 interface TimeLogsSectionProps {
   projectId: string;
   taskId: string;
-  canEdit?: boolean;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -27,6 +26,13 @@ interface TimeLogsSectionProps {
  * time-logging plugin. Lets project members add manual time-log entries
  * (date + duration + optional note) against the current task and shows the
  * running total for the task.
+ *
+ * The "log time" form and delete button both require `tasks.write`
+ * (`viewer.can_write_tasks`), matching the routes' own gate. Delete is
+ * further restricted to own entries, or any entry with
+ * `time_logging.manage_all`, via `canManageTimeLog`; the backend re-checks
+ * both on every write, so it's the actual authorization boundary, not this
+ * component's rendering.
  */
 export default function TimeLogsSection(props: TimeLogsSectionProps) {
   return (
@@ -36,11 +42,7 @@ export default function TimeLogsSection(props: TimeLogsSectionProps) {
   );
 }
 
-function TimeLogsSectionInner({
-  projectId,
-  taskId,
-  canEdit = false,
-}: TimeLogsSectionProps) {
+function TimeLogsSectionInner({ projectId, taskId }: TimeLogsSectionProps) {
   const api = useMemo(
     () =>
       new PluginApiClient({
@@ -131,7 +133,7 @@ function TimeLogsSectionInner({
         </span>
       </div>
 
-      {canEdit && (
+      {!!viewer?.can_write_tasks && (
         <form
           onSubmit={handleSubmit}
           className="flex flex-wrap items-center gap-2 rounded-xl border border-border/25 bg-card/50 p-3"
@@ -154,7 +156,7 @@ function TimeLogsSectionInner({
             placeholder="Note (optional)"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className="min-w-[10rem] flex-1 rounded-lg bg-muted/40 px-2.5 py-1.5 text-xs"
+            className="min-w-40 flex-1 rounded-lg bg-muted/40 px-2.5 py-1.5 text-xs"
           />
           <button
             type="submit"
@@ -183,7 +185,7 @@ function TimeLogsSectionInner({
               {l.note && (
                 <span className="flex-1 truncate text-xs text-muted-foreground/60">{l.note}</span>
               )}
-              {canEdit && canManageTimeLog(viewer, l.member_id) && (
+              {canManageTimeLog(viewer, l.member_id) && (
                 <button
                   type="button"
                   onClick={() => deleteLog.mutate(l.id)}
