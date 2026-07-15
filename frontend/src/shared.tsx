@@ -6,7 +6,7 @@
 import type { PluginApiClient } from "@paca-ai/plugin-sdk-react";
 import { useQuery } from "@tanstack/react-query";
 import { PLUGIN_ID } from "./constants";
-import type { TimeLogViewer } from "./types";
+import type { TimeLogViewer, TimeLogViewerAll } from "./types";
 
 /** Formats a minute count as "1h 30m" / "45m" / "2h". */
 export function formatMinutes(minutes: number): string {
@@ -102,31 +102,65 @@ export function presetLabel(preset: DatePreset): string {
 export const PAGE_SIZES = [10, 25, 50] as const;
 
 /**
- * Fetches the current caller's project_members id and whether they hold
- * time_logging.manage_all for this project. List views use this to decide
- * whether to offer edit/delete controls for an entry — own entries are
- * always editable; other members' entries require manage_all. This is a UX
- * affordance only: the backend re-checks ownership/manage_all on every
- * write, so it remains the actual authorization boundary.
+ * Fetches the current caller's project_members id and permission state for
+ * this project (tasks.write, time_logging.manage_all). List views use this
+ * to decide whether to offer the "log time" form and edit/delete controls
+ * at all (`can_write_tasks`), and whether an entry belonging to another
+ * member may be edited/deleted (`can_manage_all`) vs. only the caller's own.
+ * This is a UX affordance only: the backend re-checks tasks.write and
+ * ownership/manage_all on every write, so it remains the actual
+ * authorization boundary.
+ *
+ * `enabled` lets a caller with no current project (e.g. the shared
+ * TimeTrackingPage component rendering in admin scope) declare this query
+ * unnecessary without violating the rules of hooks by skipping the call.
  */
 export function useTimeLogViewer(
   api: PluginApiClient,
   projectId: string,
+  enabled = true,
 ): TimeLogViewer | undefined {
   const { data } = useQuery<TimeLogViewer>({
     queryKey: ["plugin", PLUGIN_ID, "viewer", projectId],
     queryFn: () =>
       api.pluginGet<TimeLogViewer>(PLUGIN_ID, `/projects/${projectId}/time-logs/me`),
     staleTime: 5 * 60 * 1000,
+    enabled,
   });
   return data;
 }
 
-/** Whether the viewer may edit/delete a time log entry owned by memberId. */
+/**
+ * Fetches the current caller's global time_logging.manage_all permission
+ * state for the admin (cross-project) time tracking page. Unlike
+ * useTimeLogViewer there's no per-project ownership to layer on top — a
+ * global manage_all grant applies uniformly to every row on that page.
+ *
+ * `enabled` mirrors useTimeLogViewer's parameter, for the project-scoped
+ * case where this query isn't needed.
+ */
+export function useTimeLogViewerAll(
+  api: PluginApiClient,
+  enabled = true,
+): TimeLogViewerAll | undefined {
+  const { data } = useQuery<TimeLogViewerAll>({
+    queryKey: ["plugin", PLUGIN_ID, "viewer-all"],
+    queryFn: () => api.pluginGet<TimeLogViewerAll>(PLUGIN_ID, "/time-logs/viewer-all"),
+    staleTime: 5 * 60 * 1000,
+    enabled,
+  });
+  return data;
+}
+
+/**
+ * Whether the viewer may edit/delete a time log entry owned by memberId.
+ * Requires `can_write_tasks` (mirroring the routes' own tasks.write gate)
+ * plus either ownership of the entry or `can_manage_all`.
+ */
 export function canManageTimeLog(
   viewer: TimeLogViewer | undefined,
   memberId: string,
 ): boolean {
-  if (!viewer) return false;
+  if (!viewer || !viewer.can_write_tasks) return false;
   return viewer.can_manage_all || viewer.member_id === memberId;
 }

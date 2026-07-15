@@ -78,14 +78,25 @@ type timeLogAllPage struct {
 	pageMeta
 }
 
-// viewerInfo is the caller's identity + custom-permission state within the
-// current project, returned by GET /time-logs/me. The frontend uses it to
-// decide whether to offer edit/delete controls for entries that belong to
-// other members (own entries are always editable; others require
-// time_logging.manage_all).
+// viewerInfo is the caller's identity + permission state within the current
+// project, returned by GET /time-logs/me. The frontend uses it to decide
+// whether to offer the "log time" form and edit/delete controls at all
+// (CanWriteTasks — logging/editing time entries is gated by the same
+// tasks.write permission as the routes themselves) and, separately, whether
+// an entry belonging to another member may be edited/deleted (CanManageAll).
 type viewerInfo struct {
-	MemberID     string `json:"member_id"`
-	CanManageAll bool   `json:"can_manage_all"`
+	MemberID      string `json:"member_id"`
+	CanWriteTasks bool   `json:"can_write_tasks"`
+	CanManageAll  bool   `json:"can_manage_all"`
+}
+
+// viewerAllInfo is the caller's global permission state for the admin
+// (cross-project) time tracking page, returned by GET /time-logs/viewer-all.
+// There's no per-project ownership concept at this scope, so unlike
+// viewerInfo this carries only the one flag the admin page's edit/delete
+// controls need.
+type viewerAllInfo struct {
+	CanManageAll bool `json:"can_manage_all"`
 }
 
 // maxPageSize caps page_size on paginated time-log list endpoints.
@@ -156,13 +167,28 @@ func (s *scanner) intVal(col string) int {
 // viewer handles GET /time-logs/me.
 func (p *timeLoggingPlugin) viewer(req *plugin.Request, res *plugin.Response) {
 	ok(res, viewerInfo{
-		MemberID:     req.Caller.CallerID,
-		CanManageAll: p.perm.Check(permManageAllTimeLogs),
+		MemberID:      req.Caller.CallerID,
+		CanWriteTasks: p.perm.Check("tasks.write"),
+		CanManageAll:  p.perm.Check(permManageAllTimeLogs),
 	})
 }
 
+// viewerAll handles GET /time-logs/viewer-all (global/admin scope). Lets the
+// admin page decide whether to offer edit/delete controls, backed by the
+// global-scope updateTimeLogGlobal/deleteTimeLogGlobal routes.
+func (p *timeLoggingPlugin) viewerAll(req *plugin.Request, res *plugin.Response) {
+	ok(res, viewerAllInfo{CanManageAll: p.perm.Check(permManageAllTimeLogs)})
+}
+
 // listTimeLogs handles GET /tasks/:taskId/time-logs
-// Returns all time-log entries for the task, most recent spent_date first.
+// Returns all time-log entries for the task (every member's), most recent
+// spent_date first. Gated by tasks.read only, not time_logging.view_all —
+// intentionally: per-task time logs are part of that task's own visible
+// history (like comments or activity), open to anyone who can already open
+// the task. time_logging.view_all instead gates project-wide rollups
+// (listProjectTimeLogs, timeLogsSummary) where the concern is aggregate
+// reporting across a whole project, not a single task the caller can already
+// see.
 func (p *timeLoggingPlugin) listTimeLogs(req *plugin.Request, res *plugin.Response) {
 	taskID := req.PathParam("taskId")
 	projectID := req.Caller.ProjectID
@@ -182,7 +208,12 @@ func (p *timeLoggingPlugin) listTimeLogs(req *plugin.Request, res *plugin.Respon
 
 // createTimeLog handles POST /tasks/:taskId/time-logs
 // Body: { "spent_date": "2026-07-13", "minutes_spent": 90, "note": "..." (optional) }
-// member_id defaults to the caller unless explicitly provided.
+// member_id defaults to the caller unless explicitly provided, in which case
+// the caller must hold time_logging.manage_all to attribute the entry to
+// someone else — see canModify. Without it, a caller could otherwise
+// fabricate time entries under another member's name, which is exactly the
+// capability manage_all is meant to gate (update/delete already require it
+// for the same reason).
 func (p *timeLoggingPlugin) createTimeLog(req *plugin.Request, res *plugin.Response) {
 	taskID := req.PathParam("taskId")
 	projectID := req.Caller.ProjectID
@@ -212,8 +243,12 @@ func (p *timeLoggingPlugin) createTimeLog(req *plugin.Request, res *plugin.Respo
 	}
 
 	memberID := req.Caller.CallerID
-	if b.MemberID != nil && *b.MemberID != "" {
+	if b.MemberID != nil && *b.MemberID != "" && *b.MemberID != memberID {
 		if !p.memberBelongsToProject(*b.MemberID, projectID, res) {
+			return
+		}
+		if !p.canModify(req, *b.MemberID) {
+			res.Error(403, "you can only log time for yourself unless you hold time_logging.manage_all")
 			return
 		}
 		memberID = *b.MemberID
@@ -387,6 +422,155 @@ func (p *timeLoggingPlugin) deleteTimeLog(req *plugin.Request, res *plugin.Respo
 	)
 	if err != nil {
 		p.log.Error("deleteTimeLog: " + err.Error())
+		res.Error(500, "failed to delete time log")
+		return
+	}
+	if affected == 0 {
+		res.Error(404, "time log not found")
+		return
+	}
+	plugin.RecordActivity(taskID, projectID, req.Caller.UserID, "task.time_log.deleted",
+		map[string]any{
+			"minutes_spent": minutesSpent,
+			"spent_date":    spentDate,
+			"_description":  fmt.Sprintf("deleted time log of %d minutes on %s", minutesSpent, spentDate),
+		})
+	res.NoContent()
+}
+
+// ── Cross-project admin edit/delete ──────────────────────────────────────────
+//
+// updateTimeLogGlobal and deleteTimeLogGlobal back the admin (cross-project)
+// time tracking page's edit/delete controls. They operate on a bare logId
+// with no :projectId/:taskId in the path — unlike updateTimeLog/deleteTimeLog,
+// there's no single project to scope the route to, and the caller may not
+// even be a member of the entry's project. The host route gate requires the
+// global-scope time_logging.manage_all permission (see plugin.json), which
+// per its own declared description already grants "edit or delete any
+// project member's time log entries, across every project" — so unlike
+// canModify's self-or-manage_all check, no additional per-row ownership test
+// is needed here: reaching the handler at all already proves the caller
+// holds the one permission this capability is gated on.
+
+// updateTimeLogGlobal handles PATCH /time-logs/all/:logId (global/admin scope).
+func (p *timeLoggingPlugin) updateTimeLogGlobal(req *plugin.Request, res *plugin.Response) {
+	logID := req.PathParam("logId")
+
+	current, err := p.db.Query(
+		`SELECT id, task_id, member_id, to_char(spent_date, 'YYYY-MM-DD') AS spent_date, minutes_spent, note, created_at
+		 FROM task_time_logs WHERE id = $1`,
+		logID,
+	)
+	if err != nil {
+		p.log.Error("updateTimeLogGlobal fetch: " + err.Error())
+		res.Error(500, "failed to update time log")
+		return
+	}
+	if len(current.Rows) == 0 {
+		res.Error(404, "time log not found")
+		return
+	}
+	sc := newRowScanner(current.Columns, current.Rows[0])
+	taskID := sc.str("task_id")
+	projectID, err := p.projectIDForTask(taskID)
+	if err != nil {
+		p.log.Error("updateTimeLogGlobal task lookup: " + err.Error())
+		res.Error(500, "failed to update time log")
+		return
+	}
+
+	type body struct {
+		SpentDate    *string `json:"spent_date"`
+		MinutesSpent *int    `json:"minutes_spent"`
+		Note         *string `json:"note"`
+	}
+	b, err := plugin.JSONBody[body](req)
+	if err != nil {
+		res.Error(400, "invalid request body")
+		return
+	}
+	if b.MinutesSpent != nil && *b.MinutesSpent <= 0 {
+		res.Error(400, "minutes_spent must be greater than zero")
+		return
+	}
+
+	spentDate := sc.str("spent_date")
+	if b.SpentDate != nil && *b.SpentDate != "" {
+		spentDate = *b.SpentDate
+	}
+	minutesSpent := sc.intVal("minutes_spent")
+	if b.MinutesSpent != nil {
+		minutesSpent = *b.MinutesSpent
+	}
+	note := sc.str("note")
+	if b.Note != nil {
+		note = *b.Note
+	}
+
+	now := nowStr()
+	affected, err := p.db.Exec(
+		`UPDATE task_time_logs SET spent_date = $1, minutes_spent = $2, note = $3, updated_at = $4 WHERE id = $5`,
+		spentDate, minutesSpent, note, now, logID,
+	)
+	if err != nil {
+		p.log.Error("updateTimeLogGlobal update: " + err.Error())
+		res.Error(500, "failed to update time log")
+		return
+	}
+	if affected == 0 {
+		res.Error(404, "time log not found")
+		return
+	}
+	tl := timeLog{
+		ID:           logID,
+		TaskID:       taskID,
+		MemberID:     sc.str("member_id"),
+		SpentDate:    spentDate,
+		MinutesSpent: minutesSpent,
+		Note:         note,
+		CreatedAt:    sc.str("created_at"),
+		UpdatedAt:    now,
+	}
+	plugin.RecordActivity(taskID, projectID, req.Caller.UserID, "task.time_log.updated",
+		map[string]any{
+			"minutes_spent": minutesSpent,
+			"spent_date":    spentDate,
+			"_description":  fmt.Sprintf("updated time log to %d minutes on %s", minutesSpent, spentDate),
+		})
+	ok(res, tl)
+}
+
+// deleteTimeLogGlobal handles DELETE /time-logs/all/:logId (global/admin scope).
+func (p *timeLoggingPlugin) deleteTimeLogGlobal(req *plugin.Request, res *plugin.Response) {
+	logID := req.PathParam("logId")
+
+	existing, err := p.db.Query(
+		`SELECT task_id, minutes_spent, to_char(spent_date, 'YYYY-MM-DD') AS spent_date FROM task_time_logs WHERE id = $1`,
+		logID,
+	)
+	if err != nil {
+		p.log.Error("deleteTimeLogGlobal fetch: " + err.Error())
+		res.Error(500, "failed to delete time log")
+		return
+	}
+	if len(existing.Rows) == 0 {
+		res.Error(404, "time log not found")
+		return
+	}
+	sc := newRowScanner(existing.Columns, existing.Rows[0])
+	taskID := sc.str("task_id")
+	minutesSpent := sc.intVal("minutes_spent")
+	spentDate := sc.str("spent_date")
+	projectID, err := p.projectIDForTask(taskID)
+	if err != nil {
+		p.log.Error("deleteTimeLogGlobal task lookup: " + err.Error())
+		res.Error(500, "failed to delete time log")
+		return
+	}
+
+	affected, err := p.db.Exec(`DELETE FROM task_time_logs WHERE id = $1`, logID)
+	if err != nil {
+		p.log.Error("deleteTimeLogGlobal: " + err.Error())
 		res.Error(500, "failed to delete time log")
 		return
 	}
@@ -594,7 +778,6 @@ func (p *timeLoggingPlugin) timeLogsSummaryAll(req *plugin.Request, res *plugin.
 	if dateTo != "" {
 		where = append(where, fmt.Sprintf("tl.spent_date <= $%d", argN))
 		args = append(args, dateTo)
-		argN++
 	}
 	whereSQL := strings.Join(where, " AND ")
 
@@ -812,7 +995,6 @@ func (p *timeLoggingPlugin) timeLogsUsersAll(req *plugin.Request, res *plugin.Re
 	if dateTo != "" {
 		where = append(where, fmt.Sprintf("tl.spent_date <= $%d", argN))
 		args = append(args, dateTo)
-		argN++
 	}
 	whereSQL := strings.Join(where, " AND ")
 
@@ -871,11 +1053,29 @@ func (p *timeLoggingPlugin) handleTaskDeleted(evt *plugin.Event) {
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-// canModify reports whether the caller may modify a time log entry owned by
+// canModify reports whether the caller may act on a time log entry owned by
 // memberID: either it's their own entry, or they hold the
-// time_logging.manage_all custom permission.
+// time_logging.manage_all custom permission. Used both to gate edit/delete of
+// an existing entry and, in createTimeLog, to gate attributing a new entry to
+// someone other than the caller.
 func (p *timeLoggingPlugin) canModify(req *plugin.Request, memberID string) bool {
 	return memberID == req.Caller.CallerID || p.perm.Check(permManageAllTimeLogs)
+}
+
+// projectIDForTask looks up the project_id of a task, for the global-scope
+// admin handlers (updateTimeLogGlobal/deleteTimeLogGlobal) which only have a
+// task_id (read off the time-log row itself) and need the project_id to
+// record activity. A single-table lookup rather than a JOIN in the callers'
+// own query, matching this file's other single-table query style.
+func (p *timeLoggingPlugin) projectIDForTask(taskID string) (string, error) {
+	result, err := p.db.Query(`SELECT project_id FROM tasks WHERE id = $1`, taskID)
+	if err != nil {
+		return "", err
+	}
+	if len(result.Rows) == 0 {
+		return "", nil
+	}
+	return newRowScanner(result.Columns, result.Rows[0]).str("project_id"), nil
 }
 
 // taskBelongsToProject validates that the given task exists in the project.

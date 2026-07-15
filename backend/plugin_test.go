@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"os"
+	"strings"
 	"testing"
 
 	plugin "github.com/Paca-AI/plugin-sdk-go"
@@ -283,6 +285,7 @@ func TestDeleteTimeLog(t *testing.T) {
 
 func TestListProjectTimeLogs(t *testing.T) {
 	tc := setupPlugin(t)
+	tc.Permissions.Grant(permManageAllTimeLogs) // needed to seed an entry for testMember2ID below
 
 	tc.Call("POST", "/tasks/:taskId/time-logs",
 		withPathParams(callerReq(), map[string]string{"taskId": testTaskID}).
@@ -343,6 +346,7 @@ func TestListProjectTimeLogs_Empty(t *testing.T) {
 
 func TestListProjectTimeLogs_FilterByMember(t *testing.T) {
 	tc := setupPlugin(t)
+	tc.Permissions.Grant(permManageAllTimeLogs) // needed to seed an entry for testMember2ID below
 
 	tc.Call("POST", "/tasks/:taskId/time-logs",
 		withPathParams(callerReq(), map[string]string{"taskId": testTaskID}).
@@ -446,6 +450,7 @@ func TestListProjectTimeLogs_Pagination(t *testing.T) {
 
 func TestTimeLogsSummary(t *testing.T) {
 	tc := setupPlugin(t)
+	tc.Permissions.Grant(permManageAllTimeLogs) // needed to seed an entry for testMember2ID below
 
 	// Two entries for the caller, one for a different member.
 	tc.Call("POST", "/tasks/:taskId/time-logs",
@@ -547,7 +552,7 @@ func TestCreateTimeLog_UnknownMember_Rejected(t *testing.T) {
 	}
 }
 
-func TestCreateTimeLog_MemberFromSameProject_Allowed(t *testing.T) {
+func TestCreateTimeLog_MemberFromSameProject_ForbiddenWithoutManageAll(t *testing.T) {
 	tc := setupPlugin(t)
 
 	res := tc.Call("POST", "/tasks/:taskId/time-logs",
@@ -556,6 +561,46 @@ func TestCreateTimeLog_MemberFromSameProject_Allowed(t *testing.T) {
 				"spent_date":    "2026-07-13",
 				"minutes_spent": 30,
 				"member_id":     testMember2ID,
+			}))
+
+	if res.StatusCode != 403 {
+		t.Fatalf("expected 403, got %d: %s", res.StatusCode, res.BodyString())
+	}
+}
+
+func TestCreateTimeLog_MemberFromSameProject_ManageAll_Allowed(t *testing.T) {
+	tc := setupPlugin(t)
+	tc.Permissions.Grant(permManageAllTimeLogs)
+
+	res := tc.Call("POST", "/tasks/:taskId/time-logs",
+		withPathParams(callerReq(), map[string]string{"taskId": testTaskID}).
+			WithJSONBody(map[string]any{
+				"spent_date":    "2026-07-13",
+				"minutes_spent": 30,
+				"member_id":     testMember2ID,
+			}))
+
+	if res.StatusCode != 201 {
+		t.Fatalf("expected 201, got %d: %s", res.StatusCode, res.BodyString())
+	}
+	var env struct {
+		Data timeLog `json:"data"`
+	}
+	_ = json.Unmarshal(res.Body, &env)
+	if env.Data.MemberID != testMember2ID {
+		t.Fatalf("expected member_id=%s, got %s", testMember2ID, env.Data.MemberID)
+	}
+}
+
+func TestCreateTimeLog_OwnMemberID_AllowedWithoutManageAll(t *testing.T) {
+	tc := setupPlugin(t)
+
+	res := tc.Call("POST", "/tasks/:taskId/time-logs",
+		withPathParams(callerReq(), map[string]string{"taskId": testTaskID}).
+			WithJSONBody(map[string]any{
+				"spent_date":    "2026-07-13",
+				"minutes_spent": 30,
+				"member_id":     testMemberID,
 			}))
 
 	if res.StatusCode != 201 {
@@ -669,6 +714,152 @@ func TestDeleteTimeLog_ManageAll_AllowsOtherMembersEntries(t *testing.T) {
 	}
 }
 
+// ── Cross-project admin edit/delete ──────────────────────────────────────────
+//
+// updateTimeLogGlobal/deleteTimeLogGlobal perform no in-handler permission
+// check of their own — like the other global-scope handlers in this file
+// (listAllTimeLogs, timeLogsSummaryAll, timeLogsUsersAll), they rely entirely
+// on the host's requirePermissions(scope=global, time_logging.manage_all)
+// route gate, which plugintest.Context.Call does not simulate. These tests
+// exercise the handlers' own DB logic, not that gate.
+
+func TestUpdateTimeLogGlobal_Success(t *testing.T) {
+	tc := setupPlugin(t)
+
+	createRes := tc.Call("POST", "/tasks/:taskId/time-logs",
+		withPathParams(callerReq(), map[string]string{"taskId": testTaskID}).
+			WithJSONBody(map[string]any{"spent_date": "2026-07-13", "minutes_spent": 60}))
+	var createEnv struct {
+		Data timeLog `json:"data"`
+	}
+	_ = json.Unmarshal(createRes.Body, &createEnv)
+
+	res := tc.Call("PATCH", "/time-logs/all/:logId",
+		withPathParams(callerReq(), map[string]string{"logId": createEnv.Data.ID}).
+			WithJSONBody(map[string]any{"minutes_spent": 90, "note": "adjusted by admin"}))
+
+	if res.StatusCode != 200 {
+		t.Fatalf("expected 200, got %d: %s", res.StatusCode, res.BodyString())
+	}
+	var env struct {
+		Data timeLog `json:"data"`
+	}
+	if err := json.Unmarshal(res.Body, &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.Data.MinutesSpent != 90 || env.Data.Note != "adjusted by admin" {
+		t.Fatalf("expected updated fields, got %+v", env.Data)
+	}
+}
+
+func TestUpdateTimeLogGlobal_NotFound(t *testing.T) {
+	tc := setupPlugin(t)
+
+	res := tc.Call("PATCH", "/time-logs/all/:logId",
+		withPathParams(callerReq(), map[string]string{"logId": "nonexistent"}).
+			WithJSONBody(map[string]any{"minutes_spent": 90}))
+
+	if res.StatusCode != 404 {
+		t.Fatalf("expected 404, got %d: %s", res.StatusCode, res.BodyString())
+	}
+}
+
+func TestUpdateTimeLogGlobal_InvalidMinutes(t *testing.T) {
+	tc := setupPlugin(t)
+
+	createRes := tc.Call("POST", "/tasks/:taskId/time-logs",
+		withPathParams(callerReq(), map[string]string{"taskId": testTaskID}).
+			WithJSONBody(map[string]any{"spent_date": "2026-07-13", "minutes_spent": 60}))
+	var createEnv struct {
+		Data timeLog `json:"data"`
+	}
+	_ = json.Unmarshal(createRes.Body, &createEnv)
+
+	res := tc.Call("PATCH", "/time-logs/all/:logId",
+		withPathParams(callerReq(), map[string]string{"logId": createEnv.Data.ID}).
+			WithJSONBody(map[string]any{"minutes_spent": 0}))
+
+	if res.StatusCode != 400 {
+		t.Fatalf("expected 400, got %d: %s", res.StatusCode, res.BodyString())
+	}
+}
+
+func TestDeleteTimeLogGlobal_Success(t *testing.T) {
+	tc := setupPlugin(t)
+
+	createRes := tc.Call("POST", "/tasks/:taskId/time-logs",
+		withPathParams(callerReq(), map[string]string{"taskId": testTaskID}).
+			WithJSONBody(map[string]any{"spent_date": "2026-07-13", "minutes_spent": 45}))
+	var createEnv struct {
+		Data timeLog `json:"data"`
+	}
+	_ = json.Unmarshal(createRes.Body, &createEnv)
+
+	res := tc.Call("DELETE", "/time-logs/all/:logId",
+		withPathParams(callerReq(), map[string]string{"logId": createEnv.Data.ID}))
+
+	if res.StatusCode != 204 {
+		t.Fatalf("expected 204, got %d: %s", res.StatusCode, res.BodyString())
+	}
+
+	listRes := tc.Call("GET", "/tasks/:taskId/time-logs",
+		withPathParams(callerReq(), map[string]string{"taskId": testTaskID}))
+	var listEnv struct {
+		Data []timeLog `json:"data"`
+	}
+	_ = json.Unmarshal(listRes.Body, &listEnv)
+	if len(listEnv.Data) != 0 {
+		t.Fatalf("expected the entry to be gone, got %+v", listEnv.Data)
+	}
+}
+
+func TestDeleteTimeLogGlobal_NotFound(t *testing.T) {
+	tc := setupPlugin(t)
+
+	res := tc.Call("DELETE", "/time-logs/all/:logId",
+		withPathParams(callerReq(), map[string]string{"logId": "nonexistent"}))
+
+	if res.StatusCode != 404 {
+		t.Fatalf("expected 404, got %d: %s", res.StatusCode, res.BodyString())
+	}
+}
+
+// ── Global viewer endpoint ─────────────────────────────────────────────────────
+
+func TestViewerAll_DefaultNoManageAll(t *testing.T) {
+	tc := setupPlugin(t)
+
+	res := tc.Call("GET", "/time-logs/viewer-all", callerReq())
+	if res.StatusCode != 200 {
+		t.Fatalf("expected 200, got %d: %s", res.StatusCode, res.BodyString())
+	}
+	var env struct {
+		Data viewerAllInfo `json:"data"`
+	}
+	if err := json.Unmarshal(res.Body, &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.Data.CanManageAll {
+		t.Fatalf("expected can_manage_all=false by default, got %+v", env.Data)
+	}
+}
+
+func TestViewerAll_ManageAllGranted(t *testing.T) {
+	tc := setupPlugin(t)
+	tc.Permissions.Grant(permManageAllTimeLogs)
+
+	res := tc.Call("GET", "/time-logs/viewer-all", callerReq())
+	var env struct {
+		Data viewerAllInfo `json:"data"`
+	}
+	if err := json.Unmarshal(res.Body, &env); err != nil {
+		t.Fatal(err)
+	}
+	if !env.Data.CanManageAll {
+		t.Fatalf("expected can_manage_all=true after granting, got %+v", env.Data)
+	}
+}
+
 // ── Viewer endpoint ────────────────────────────────────────────────────────────
 
 func TestViewer_DefaultNoManageAll(t *testing.T) {
@@ -706,4 +897,95 @@ func TestViewer_ManageAllGranted(t *testing.T) {
 	if !env.Data.CanManageAll {
 		t.Fatalf("expected can_manage_all=true after granting, got %+v", env.Data)
 	}
+}
+
+func TestViewer_DefaultNoWriteTasks(t *testing.T) {
+	tc := setupPlugin(t)
+
+	res := tc.Call("GET", "/time-logs/me", callerReq())
+	var env struct {
+		Data viewerInfo `json:"data"`
+	}
+	if err := json.Unmarshal(res.Body, &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.Data.CanWriteTasks {
+		t.Fatalf("expected can_write_tasks=false by default, got %+v", env.Data)
+	}
+}
+
+func TestViewer_WriteTasksGranted(t *testing.T) {
+	tc := setupPlugin(t)
+	tc.Permissions.Grant("tasks.write")
+
+	res := tc.Call("GET", "/time-logs/me", callerReq())
+	var env struct {
+		Data viewerInfo `json:"data"`
+	}
+	if err := json.Unmarshal(res.Body, &env); err != nil {
+		t.Fatal(err)
+	}
+	if !env.Data.CanWriteTasks {
+		t.Fatalf("expected can_write_tasks=true after granting, got %+v", env.Data)
+	}
+}
+
+// ── Manifest / route-table parity ─────────────────────────────────────────────
+//
+// The host only enforces a route's declared plugin.json middlewares
+// (optionalAuthn/requirePermissions/etc.) when the request path matches an
+// entry in plugin.json's backend.routes. If Init() registers a route here
+// that has no matching manifest entry (or the manifest path is wrong), the
+// host silently falls back to its weak default policy — optionalAuthn +
+// requireFreshPassword only, with no permission check at all — instead of
+// failing closed. This test guards against that drift by asserting every
+// manifest route resolves to a handler actually registered in Init().
+
+func TestManifestRoutesMatchRegisteredRoutes(t *testing.T) {
+	data, err := os.ReadFile("../plugin.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		Backend struct {
+			Routes []struct {
+				Method string `json:"method"`
+				Path   string `json:"path"`
+			} `json:"routes"`
+		} `json:"backend"`
+	}
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Backend.Routes) == 0 {
+		t.Fatal("plugin.json declares no backend routes")
+	}
+
+	tc := setupPlugin(t)
+	for _, r := range m.Backend.Routes {
+		relPath := stripProjectPrefix(r.Path)
+		req := &plugin.Request{PathParams: map[string]string{}}
+		res := plugin.NewResponse()
+		if ok := plugin.DispatchRoute(tc.PluginContext(), r.Method, relPath, req, res); !ok {
+			t.Errorf("plugin.json declares %s %s (relative path %s) but Init() registers no matching route — "+
+				"this path would fall back to the host's default policy (no permission check)",
+				r.Method, r.Path, relPath)
+		}
+	}
+}
+
+// stripProjectPrefix mirrors plugin-sdk-go's splitProjectPath: it strips a
+// leading "/projects/<segment>" pair so a manifest path can be compared
+// against the relative pattern registered via ctx.Route in Init().
+func stripProjectPrefix(path string) string {
+	const prefix = "/projects/"
+	if !strings.HasPrefix(path, prefix) {
+		return path
+	}
+	rest := strings.TrimPrefix(path, prefix)
+	parts := strings.SplitN(rest, "/", 2)
+	if len(parts) < 2 {
+		return "/"
+	}
+	return "/" + parts[1]
 }

@@ -109,7 +109,7 @@ const tools: Tool[] = [
 				memberId: {
 					type: "string",
 					description:
-						"UUID of the project member the time should be attributed to (optional; defaults to the caller).",
+						"UUID of the project member the time should be attributed to (optional; defaults to the caller). Attributing time to a different member requires the caller to hold the time_logging.manage_all permission.",
 				},
 			},
 			required: ["projectId", "taskId", "spentDate", "minutesSpent"],

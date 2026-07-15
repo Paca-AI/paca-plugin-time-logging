@@ -34,19 +34,23 @@ time-logging/
   entry points:
   - `./TimeLogsSection` — rendered via the `task.detail.section` extension
     point. Lets a member add/view/delete time-log entries for the current
-    task.
+    task. The "log time" form and delete button both require
+    `viewer.can_write_tasks` (`tasks.write`), mirroring the routes' own
+    gate; delete is further limited by `canManageTimeLog` to the caller's
+    own entries, or any entry with `time_logging.manage_all`.
   - `./ProjectTimeTrackingPage` — rendered via the `project.page` extension
     point at its own routed page (`/projects/:projectId/plugins/com.paca.time-logging/time-tracking`),
     reached through a nav item this plugin registers in the project sidebar.
-    Lists every time-log entry across every task in the project (date,
-    member, task, note, duration), filterable by member and date range, with
-    inline edit/delete.
+    Gated by the project-scoped `time_logging.view_all` custom permission —
+    the nav item is hidden for members without it. Lists every time-log
+    entry across every task in the project (date, member, task, note,
+    duration), filterable by member and date range, with inline edit/delete.
   - `./AdminTimeTrackingPage` — rendered via the `admin.page` extension point
     at its own routed page (`/admin/plugins/com.paca.time-logging/time-tracking`),
     reached through a nav item this plugin registers in the admin sidebar.
     Cross-project view: every time-log entry across every project in the
-    instance, filterable by project, user, and date range. Gated by the same
-    `users.write` global permission as the built-in admin pages, and
+    instance, filterable by project, user, and date range. Gated by the
+    plugin's own `time_logging.view_all` global custom permission, and
     deliberately read-only (see the doc comment on `AdminTimeTrackingPageInner`
     for why editing doesn't belong here).
 - Communicates with the backend through the standard plugin API path:  
@@ -56,16 +60,50 @@ time-logging/
 
 ### Authorization
 
-By default a caller may only edit or delete their **own** time-log entries
-(`PATCH`/`DELETE` on `/tasks/:taskId/time-logs/:logId` return `403` otherwise).
-The plugin declares one custom permission, `time_logging.manage_all`
-(`customPermissions` in `plugin.json`), which a project owner can grant to a
-role to let its holders edit/delete any project member's entries — it appears
-alongside built-in permissions in the project role editor. The backend checks
-it via the SDK's `ctx.Permissions().Check(...)`, backed by the host's
-`paca.permission_check` function; the frontend fetches its own
-`GET /time-logs/me` (`viewerInfo`) to decide whether to show edit/delete
-controls, but the backend check is the actual authorization boundary.
+Logging, editing, and deleting time-log entries all require the built-in
+`tasks.write` permission — tracking time against a task is treated as a
+task-editing action, same as the task itself. On top of that, a caller may
+only edit or delete their **own** entries by default (`PATCH`/`DELETE` on
+`/tasks/:taskId/time-logs/:logId` return `403` otherwise).
+`GET /time-logs/me` (`viewerInfo`) returns both `can_write_tasks` and
+`can_manage_all` so every list view (task detail, project-wide) can decide
+whether to offer the "log time" form and edit/delete controls consistently,
+via the shared `canManageTimeLog` helper — but the backend re-checks both on
+every write, so it remains the actual authorization boundary.
+
+The plugin declares four custom permissions (`customPermissions` in
+`plugin.json`) — note that both `time_logging.manage_all` and
+`time_logging.view_all` are declared **twice**, once per scope, since the
+same key name reads naturally in both role editors and the two scopes never
+share a permission map:
+
+- `time_logging.manage_all` (scope `project`) — a project owner can grant
+  this to a project role to let its holders edit/delete any project
+  member's entries within that project, in addition to their own.
+- `time_logging.manage_all` (scope `global`) — grants the same
+  edit/delete-any-entry capability, but instance-wide across every project,
+  not just one. It appears in the *global* role editor. Both variants are
+  checked identically via the SDK's `ctx.Permissions().Check(...)`, backed
+  by the host's `paca.permission_check` function, which merges a caller's
+  global and project permissions for project-scoped checks — so a global
+  grant satisfies the check in every project without needing a matching
+  per-project grant.
+- `time_logging.view_all` (scope `project`) — required to reach the
+  project's "Time Tracking" nav item/page and its `/time-logs` and
+  `/time-logs/summary` endpoints (the project-wide, every-member view — not
+  `/time-logs/me`, which stays open to any project member). It appears in
+  the *project* role editor and is enforced entirely by the host's
+  `requirePermissions` route middleware — no additional in-handler check.
+  **Migration note:** before this permission existed, any project member
+  with baseline `projects.read` could see this view; existing project roles
+  will need it granted explicitly to keep that access after upgrading.
+- `time_logging.view_all` (scope `global`) — required to reach the
+  admin-sidebar "Time Tracking" page and its `/time-logs/summary-all`,
+  `/time-logs/all`, and `/time-logs/users-all` endpoints. It appears in the
+  *global* role editor and is enforced entirely by the host's
+  `requirePermissions` route middleware (declared per-route in
+  `plugin.json`) — there is no additional in-handler check for it, since
+  those routes are otherwise fully public within the instance once granted.
 
 ### MCP (`mcp/`)
 
@@ -85,18 +123,18 @@ authenticated member of the project.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/tasks/:taskId/time-logs` | List all time-log entries for a task |
-| `POST` | `/tasks/:taskId/time-logs` | Log time against a task |
-| `PATCH` | `/tasks/:taskId/time-logs/:logId` | Update a time-log entry (own entries, or any entry with `time_logging.manage_all`) |
+| `GET` | `/tasks/:taskId/time-logs` | List all time-log entries for a task (requires `tasks.read`) |
+| `POST` | `/tasks/:taskId/time-logs` | Log time against a task (requires `tasks.write`) |
+| `PATCH` | `/tasks/:taskId/time-logs/:logId` | Update a time-log entry (requires `tasks.write`, plus own entries or any entry with `time_logging.manage_all`) |
 | `DELETE` | `/tasks/:taskId/time-logs/:logId` | Delete a time-log entry (same rule as `PATCH`) |
-| `GET` | `/time-logs` | List every time-log entry across all tasks in the project |
-| `GET` | `/time-logs/summary` | Total minutes logged per project member |
+| `GET` | `/time-logs` | List every time-log entry across all tasks in the project (requires `time_logging.view_all`) |
+| `GET` | `/time-logs/summary` | Total minutes logged per project member (requires `time_logging.view_all`) |
 | `GET` | `/time-logs/me` | The caller's `member_id` and whether they hold `time_logging.manage_all` |
 
 ### Global/admin-scoped
 
-No `:projectId` — gated by the `users.write` global permission, same as the
-built-in admin pages.
+No `:projectId` — gated by the plugin's own `time_logging.view_all` global
+custom permission.
 
 | Method | Path | Description |
 |--------|------|-------------|
