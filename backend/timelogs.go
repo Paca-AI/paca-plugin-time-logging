@@ -778,7 +778,6 @@ func (p *timeLoggingPlugin) timeLogsSummaryAll(req *plugin.Request, res *plugin.
 	if dateTo != "" {
 		where = append(where, fmt.Sprintf("tl.spent_date <= $%d", argN))
 		args = append(args, dateTo)
-		argN++
 	}
 	whereSQL := strings.Join(where, " AND ")
 
@@ -996,7 +995,6 @@ func (p *timeLoggingPlugin) timeLogsUsersAll(req *plugin.Request, res *plugin.Re
 	if dateTo != "" {
 		where = append(where, fmt.Sprintf("tl.spent_date <= $%d", argN))
 		args = append(args, dateTo)
-		argN++
 	}
 	whereSQL := strings.Join(where, " AND ")
 
