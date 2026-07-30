@@ -244,6 +244,45 @@
       }
     ]
   },
+  "automation": {
+    "triggers": [
+      {
+        "type": "com.paca.time-logging.entry_created",
+        "label": "Time Logging: Entry Created",
+        "eventTopic": "time_logging.entry_created"
+      }
+    ],
+    "conditions": [
+      {
+        "type": "com.paca.time-logging.total_minutes_exceeds",
+        "label": "Time Logging: Total Minutes Exceeds",
+        "configSchema": {
+          "type": "object",
+          "required": ["threshold_minutes"],
+          "properties": {
+            "threshold_minutes": { "type": "integer", "title": "Threshold (minutes)", "minimum": 1 },
+            "member_id": { "type": "string", "title": "Member ID (optional — omit to sum every member)" }
+          }
+        }
+      }
+    ],
+    "actions": [
+      {
+        "type": "com.paca.time-logging.log_time",
+        "label": "Time Logging: Log Time",
+        "configSchema": {
+          "type": "object",
+          "required": ["member_id", "spent_date", "minutes_spent"],
+          "properties": {
+            "member_id": { "type": "string", "title": "Member ID" },
+            "spent_date": { "type": "string", "title": "Date", "format": "date" },
+            "minutes_spent": { "type": "integer", "title": "Minutes Spent", "minimum": 1 },
+            "note": { "type": "string", "title": "Note", "format": "textarea" }
+          }
+        }
+      }
+    ]
+  },
   "mcp": {
     "remoteEntryUrl": "/plugins-mcp/com.paca.time-logging/mcp.js"
   }

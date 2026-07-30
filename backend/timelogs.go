@@ -285,6 +285,13 @@ func (p *timeLoggingPlugin) createTimeLog(req *plugin.Request, res *plugin.Respo
 			"spent_date":    b.SpentDate,
 			"_description":  fmt.Sprintf("logged %d minutes on %s", b.MinutesSpent, b.SpentDate),
 		})
+	plugin.EmitEvent("time_logging.entry_created", map[string]any{
+		"project_id":    projectID,
+		"task_id":       taskID,
+		"member_id":     memberID,
+		"minutes_spent": b.MinutesSpent,
+		"spent_date":    b.SpentDate,
+	})
 	created(res, tl)
 }
 

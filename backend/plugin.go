@@ -62,6 +62,9 @@ func (p *timeLoggingPlugin) Init(ctx *plugin.Context) error {
 	ctx.Route("PATCH", "/time-logs/all/:logId", p.updateTimeLogGlobal)
 	ctx.Route("DELETE", "/time-logs/all/:logId", p.deleteTimeLogGlobal)
 
+	// Automation graph nodes (Condition/Action)
+	p.registerAutomationNodes(ctx)
+
 	return nil
 }
 
