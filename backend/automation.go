@@ -14,18 +14,20 @@ import (
 // engine matches triggers purely on event topic, per AutomationManifest's
 // EventTopic field (see domain/plugin/entity.go in the core).
 //
-// Node types are namespaced under "com.paca.time-logging", matching the
-// "automation" block in plugin.json.
+// Node types are namespaced under the plugin's short name, "time_logging"
+// (the last dot-separated segment of the plugin ID "com.paca.time-logging",
+// snake_cased), not the full reverse-DNS ID — matching the "automation"
+// block in plugin.json.
 
 const (
 	// automationConditionTotalMinutesExceeds checks whether the sum of
 	// minutes logged on a task (optionally filtered to a single member)
 	// exceeds a configured threshold.
-	automationConditionTotalMinutesExceeds = "com.paca.time-logging.total_minutes_exceeds"
+	automationConditionTotalMinutesExceeds = "time_logging.total_minutes_exceeds"
 
 	// automationActionLogTime creates a time-log entry on the task, the
 	// same operation createTimeLog performs over HTTP.
-	automationActionLogTime = "com.paca.time-logging.log_time"
+	automationActionLogTime = "time_logging.log_time"
 )
 
 // registerAutomationNodes wires this plugin's Condition/Action handlers
@@ -35,7 +37,7 @@ func (p *timeLoggingPlugin) registerAutomationNodes(ctx *plugin.Context) {
 	ctx.Action(automationActionLogTime, p.actionLogTime)
 }
 
-// ─── Condition: com.paca.time-logging.total_minutes_exceeds ──────────────────
+// ─── Condition: time_logging.total_minutes_exceeds ────────────────────────────
 
 func (p *timeLoggingPlugin) conditionTotalMinutesExceeds(req *plugin.ConditionRequest) plugin.ConditionResult {
 	var cfg struct {
@@ -79,7 +81,7 @@ func (p *timeLoggingPlugin) conditionTotalMinutesExceeds(req *plugin.ConditionRe
 	return plugin.ConditionResult{Matched: total > cfg.ThresholdMinutes}
 }
 
-// ─── Action: com.paca.time-logging.log_time ───────────────────────────────────
+// ─── Action: time_logging.log_time ────────────────────────────────────────────
 
 func (p *timeLoggingPlugin) actionLogTime(req *plugin.ActionRequest) plugin.ActionResult {
 	var cfg struct {
