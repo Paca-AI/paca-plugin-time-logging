@@ -213,8 +213,8 @@ go test -v ./...
 # Lint
 golangci-lint run --timeout=5m
 
-# Build WASM binary (requires Go 1.24+)
-GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o time-logging.wasm .
+# Build WASM binary (requires TinyGo — see https://tinygo.org/getting-started/install/)
+tinygo build -target=wasip1 -buildmode=c-shared -o time-logging.wasm .
 ```
 
 ### Frontend
