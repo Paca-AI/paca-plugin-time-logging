@@ -222,13 +222,13 @@ func (p *timeLoggingPlugin) createTimeLog(req *plugin.Request, res *plugin.Respo
 		return
 	}
 
-	type body struct {
+	type createTimeLogBody struct {
 		SpentDate    string  `json:"spent_date"`
 		MinutesSpent int     `json:"minutes_spent"`
 		Note         string  `json:"note"`
 		MemberID     *string `json:"member_id"`
 	}
-	b, err := plugin.JSONBody[body](req)
+	b, err := plugin.JSONBody[createTimeLogBody](req)
 	if err != nil {
 		res.Error(400, "invalid request body")
 		return
@@ -328,12 +328,12 @@ func (p *timeLoggingPlugin) updateTimeLog(req *plugin.Request, res *plugin.Respo
 		return
 	}
 
-	type body struct {
+	type updateTimeLogBody struct {
 		SpentDate    *string `json:"spent_date"`
 		MinutesSpent *int    `json:"minutes_spent"`
 		Note         *string `json:"note"`
 	}
-	b, err := plugin.JSONBody[body](req)
+	b, err := plugin.JSONBody[updateTimeLogBody](req)
 	if err != nil {
 		res.Error(400, "invalid request body")
 		return
@@ -486,12 +486,12 @@ func (p *timeLoggingPlugin) updateTimeLogGlobal(req *plugin.Request, res *plugin
 		return
 	}
 
-	type body struct {
+	type updateTimeLogGlobalBody struct {
 		SpentDate    *string `json:"spent_date"`
 		MinutesSpent *int    `json:"minutes_spent"`
 		Note         *string `json:"note"`
 	}
-	b, err := plugin.JSONBody[body](req)
+	b, err := plugin.JSONBody[updateTimeLogGlobalBody](req)
 	if err != nil {
 		res.Error(400, "invalid request body")
 		return
