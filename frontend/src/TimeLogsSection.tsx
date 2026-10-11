@@ -27,10 +27,10 @@ interface TimeLogsSectionProps {
  * (date + duration + optional note) against the current task and shows the
  * running total for the task.
  *
- * The "log time" form and delete button both require `tasks.write`
+ * The "log time" form and delete button both require `tasks:write`
  * (`viewer.can_write_tasks`), matching the routes' own gate. Delete is
  * further restricted to own entries, or any entry with
- * `time_logging.manage_all`, via `canManageTimeLog`; the backend re-checks
+ * `time_logging:manage_all`, via `canManageTimeLog`; the backend re-checks
  * both on every write, so it's the actual authorization boundary, not this
  * component's rendering.
  */

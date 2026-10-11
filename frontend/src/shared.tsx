@@ -103,11 +103,11 @@ export const PAGE_SIZES = [10, 25, 50] as const;
 
 /**
  * Fetches the current caller's project_members id and permission state for
- * this project (tasks.write, time_logging.manage_all). List views use this
+ * this project (tasks:write, time_logging:manage_all). List views use this
  * to decide whether to offer the "log time" form and edit/delete controls
  * at all (`can_write_tasks`), and whether an entry belonging to another
  * member may be edited/deleted (`can_manage_all`) vs. only the caller's own.
- * This is a UX affordance only: the backend re-checks tasks.write and
+ * This is a UX affordance only: the backend re-checks tasks:write and
  * ownership/manage_all on every write, so it remains the actual
  * authorization boundary.
  *
@@ -131,7 +131,7 @@ export function useTimeLogViewer(
 }
 
 /**
- * Fetches the current caller's global time_logging.manage_all permission
+ * Fetches the current caller's global time_logging:manage_all permission
  * state for the admin (cross-project) time tracking page. Unlike
  * useTimeLogViewer there's no per-project ownership to layer on top — a
  * global manage_all grant applies uniformly to every row on that page.
@@ -154,7 +154,7 @@ export function useTimeLogViewerAll(
 
 /**
  * Whether the viewer may edit/delete a time log entry owned by memberId.
- * Requires `can_write_tasks` (mirroring the routes' own tasks.write gate)
+ * Requires `can_write_tasks` (mirroring the routes' own tasks:write gate)
  * plus either ownership of the entry or `can_manage_all`.
  */
 export function canManageTimeLog(

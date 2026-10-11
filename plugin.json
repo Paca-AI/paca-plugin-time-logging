@@ -2,33 +2,21 @@
   "id": "com.paca.time-logging",
   "displayName": "Time Logging",
   "description": "Lets project members manually log time spent on tasks (date, duration, note) and view per-member totals for a project.",
-  "version": "0.2.3",
-  "minCoreVersion": "v0.13.3",
+  "version": "0.2.4",
+  "minCoreVersion": "v0.19.0",
   "permissions": ["db.read", "db.write", "events.subscribe"],
   "customPermissions": [
     {
-      "key": "time_logging.manage_all",
+      "key": "time_logging:manage_all",
+      "scope": "both",
       "label": "Manage all time logs",
-      "description": "Edit or delete any project member's time log entries, not just their own.",
-      "scope": "project"
+      "description": "Edit or delete any project member's time log entries. Grant on a project resource to restrict to that project, or on a global resource for cross-project access."
     },
     {
-      "key": "time_logging.view_all",
+      "key": "time_logging:view_all",
+      "scope": "both",
       "label": "View all time logs",
-      "description": "View the project-wide time tracking page listing every member's logged time, not just their own. Does not affect per-task time log visibility, which any project member can already see via tasks.read.",
-      "scope": "project"
-    },
-    {
-      "key": "time_logging.view_all",
-      "label": "View all time logs",
-      "description": "View logged time summaries and entries across every project, not just the ones they're a member of.",
-      "scope": "global"
-    },
-    {
-      "key": "time_logging.manage_all",
-      "label": "Manage all time logs",
-      "description": "Edit or delete any project member's time log entries, across every project.",
-      "scope": "global"
+      "description": "View the time tracking page listing every member's logged time. Grant on a project resource to restrict to that project, or on a global resource for cross-project access."
     }
   ],
   "backend": {
@@ -41,9 +29,9 @@
           { "name": "optionalAuthn" },
           { "name": "requireFreshPassword" },
           {
-            "name": "requirePermissions",
+            "name": "requireActions",
             "scope": "project",
-            "permissions": ["tasks.read"]
+            "actions": ["tasks:read"]
           }
         ]
       },
@@ -54,9 +42,9 @@
           { "name": "optionalAuthn" },
           { "name": "requireFreshPassword" },
           {
-            "name": "requirePermissions",
+            "name": "requireActions",
             "scope": "project",
-            "permissions": ["tasks.write"]
+            "actions": ["tasks:write"]
           }
         ]
       },
@@ -67,9 +55,9 @@
           { "name": "optionalAuthn" },
           { "name": "requireFreshPassword" },
           {
-            "name": "requirePermissions",
+            "name": "requireActions",
             "scope": "project",
-            "permissions": ["tasks.write"]
+            "actions": ["tasks:write"]
           }
         ]
       },
@@ -80,9 +68,9 @@
           { "name": "optionalAuthn" },
           { "name": "requireFreshPassword" },
           {
-            "name": "requirePermissions",
+            "name": "requireActions",
             "scope": "project",
-            "permissions": ["tasks.write"]
+            "actions": ["tasks:write"]
           }
         ]
       },
@@ -93,9 +81,9 @@
           { "name": "optionalAuthn" },
           { "name": "requireFreshPassword" },
           {
-            "name": "requirePermissions",
+            "name": "requireActions",
             "scope": "project",
-            "permissions": ["projects.read"]
+            "actions": ["projects:read"]
           }
         ]
       },
@@ -106,9 +94,9 @@
           { "name": "optionalAuthn" },
           { "name": "requireFreshPassword" },
           {
-            "name": "requirePermissions",
+            "name": "requireActions",
             "scope": "project",
-            "permissions": ["time_logging.view_all"]
+            "actions": ["time_logging:view_all"]
           }
         ]
       },
@@ -119,9 +107,9 @@
           { "name": "optionalAuthn" },
           { "name": "requireFreshPassword" },
           {
-            "name": "requirePermissions",
+            "name": "requireActions",
             "scope": "project",
-            "permissions": ["time_logging.view_all"]
+            "actions": ["time_logging:view_all"]
           }
         ]
       },
@@ -132,9 +120,9 @@
           { "name": "optionalAuthn" },
           { "name": "requireFreshPassword" },
           {
-            "name": "requirePermissions",
+            "name": "requireActions",
             "scope": "global",
-            "permissions": ["time_logging.view_all"]
+            "actions": ["time_logging:view_all"]
           }
         ]
       },
@@ -145,9 +133,9 @@
           { "name": "optionalAuthn" },
           { "name": "requireFreshPassword" },
           {
-            "name": "requirePermissions",
+            "name": "requireActions",
             "scope": "global",
-            "permissions": ["time_logging.view_all"]
+            "actions": ["time_logging:view_all"]
           }
         ]
       },
@@ -158,9 +146,9 @@
           { "name": "optionalAuthn" },
           { "name": "requireFreshPassword" },
           {
-            "name": "requirePermissions",
+            "name": "requireActions",
             "scope": "global",
-            "permissions": ["time_logging.view_all"]
+            "actions": ["time_logging:view_all"]
           }
         ]
       },
@@ -171,9 +159,9 @@
           { "name": "optionalAuthn" },
           { "name": "requireFreshPassword" },
           {
-            "name": "requirePermissions",
+            "name": "requireActions",
             "scope": "global",
-            "permissions": ["time_logging.view_all"]
+            "actions": ["time_logging:view_all"]
           }
         ]
       },
@@ -184,9 +172,9 @@
           { "name": "optionalAuthn" },
           { "name": "requireFreshPassword" },
           {
-            "name": "requirePermissions",
+            "name": "requireActions",
             "scope": "global",
-            "permissions": ["time_logging.manage_all"]
+            "actions": ["time_logging:manage_all"]
           }
         ]
       },
@@ -197,9 +185,9 @@
           { "name": "optionalAuthn" },
           { "name": "requireFreshPassword" },
           {
-            "name": "requirePermissions",
+            "name": "requireActions",
             "scope": "global",
-            "permissions": ["time_logging.manage_all"]
+            "actions": ["time_logging:manage_all"]
           }
         ]
       }
@@ -232,7 +220,7 @@
         "icon": "Clock",
         "component": "ProjectTimeTrackingPage",
         "order": 20,
-        "requiredPermission": "time_logging.view_all"
+        "requiredPermission": "time_logging:view_all"
       },
       {
         "scope": "admin",
@@ -241,7 +229,7 @@
         "icon": "Clock",
         "component": "AdminTimeTrackingPage",
         "order": 20,
-        "requiredPermission": "time_logging.view_all"
+        "requiredPermission": "time_logging:view_all"
       }
     ]
   },

@@ -75,12 +75,12 @@ interface DisplayRow {
  *
  * Project scope: lists one project's entries (GET .../time-logs), filterable
  * by member + date range; edit/delete gated per-row by canManageTimeLog (own
- * entry, or the project/global time_logging.manage_all permission), against
+ * entry, or the project/global time_logging:manage_all permission), against
  * the project-scoped PATCH/DELETE .../tasks/:taskId/time-logs/:logId routes.
  *
  * Admin scope: lists every project's entries (GET /time-logs/all), filterable
  * by project + user + date range; edit/delete gated uniformly — not per-row —
- * by whether the caller holds the global time_logging.manage_all permission
+ * by whether the caller holds the global time_logging:manage_all permission
  * (useTimeLogViewerAll), against the dedicated global-scope PATCH/DELETE
  * /time-logs/all/:logId routes. There's no per-row ownership check at this
  * scope: the caller may not even be a member of a given entry's project, so

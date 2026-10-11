@@ -82,7 +82,7 @@ type timeLogAllPage struct {
 // project, returned by GET /time-logs/me. The frontend uses it to decide
 // whether to offer the "log time" form and edit/delete controls at all
 // (CanWriteTasks — logging/editing time entries is gated by the same
-// tasks.write permission as the routes themselves) and, separately, whether
+// tasks:write permission as the routes themselves) and, separately, whether
 // an entry belonging to another member may be edited/deleted (CanManageAll).
 type viewerInfo struct {
 	MemberID      string `json:"member_id"`
@@ -168,7 +168,7 @@ func (s *scanner) intVal(col string) int {
 func (p *timeLoggingPlugin) viewer(req *plugin.Request, res *plugin.Response) {
 	ok(res, viewerInfo{
 		MemberID:      req.Caller.CallerID,
-		CanWriteTasks: p.perm.Check("tasks.write"),
+		CanWriteTasks: p.perm.Check("tasks:write"),
 		CanManageAll:  p.perm.Check(permManageAllTimeLogs),
 	})
 }
@@ -182,10 +182,10 @@ func (p *timeLoggingPlugin) viewerAll(req *plugin.Request, res *plugin.Response)
 
 // listTimeLogs handles GET /tasks/:taskId/time-logs
 // Returns all time-log entries for the task (every member's), most recent
-// spent_date first. Gated by tasks.read only, not time_logging.view_all —
+// spent_date first. Gated by tasks:read only, not time_logging:view_all —
 // intentionally: per-task time logs are part of that task's own visible
 // history (like comments or activity), open to anyone who can already open
-// the task. time_logging.view_all instead gates project-wide rollups
+// the task. time_logging:view_all instead gates project-wide rollups
 // (listProjectTimeLogs, timeLogsSummary) where the concern is aggregate
 // reporting across a whole project, not a single task the caller can already
 // see.
@@ -209,7 +209,7 @@ func (p *timeLoggingPlugin) listTimeLogs(req *plugin.Request, res *plugin.Respon
 // createTimeLog handles POST /tasks/:taskId/time-logs
 // Body: { "spent_date": "2026-07-13", "minutes_spent": 90, "note": "..." (optional) }
 // member_id defaults to the caller unless explicitly provided, in which case
-// the caller must hold time_logging.manage_all to attribute the entry to
+// the caller must hold time_logging:manage_all to attribute the entry to
 // someone else — see canModify. Without it, a caller could otherwise
 // fabricate time entries under another member's name, which is exactly the
 // capability manage_all is meant to gate (update/delete already require it
@@ -248,7 +248,7 @@ func (p *timeLoggingPlugin) createTimeLog(req *plugin.Request, res *plugin.Respo
 			return
 		}
 		if !p.canModify(req, *b.MemberID) {
-			res.Error(403, "you can only log time for yourself unless you hold time_logging.manage_all")
+			res.Error(403, "you can only log time for yourself unless you hold time_logging:manage_all")
 			return
 		}
 		memberID = *b.MemberID
@@ -452,7 +452,7 @@ func (p *timeLoggingPlugin) deleteTimeLog(req *plugin.Request, res *plugin.Respo
 // with no :projectId/:taskId in the path — unlike updateTimeLog/deleteTimeLog,
 // there's no single project to scope the route to, and the caller may not
 // even be a member of the entry's project. The host route gate requires the
-// global-scope time_logging.manage_all permission (see plugin.json), which
+// global-scope time_logging:manage_all permission (see plugin.json), which
 // per its own declared description already grants "edit or delete any
 // project member's time log entries, across every project" — so unlike
 // canModify's self-or-manage_all check, no additional per-row ownership test
@@ -1062,7 +1062,7 @@ func (p *timeLoggingPlugin) handleTaskDeleted(evt *plugin.Event) {
 
 // canModify reports whether the caller may act on a time log entry owned by
 // memberID: either it's their own entry, or they hold the
-// time_logging.manage_all custom permission. Used both to gate edit/delete of
+// time_logging:manage_all custom permission. Used both to gate edit/delete of
 // an existing entry and, in createTimeLog, to gate attributing a new entry to
 // someone other than the caller.
 func (p *timeLoggingPlugin) canModify(req *plugin.Request, memberID string) bool {
