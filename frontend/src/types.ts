@@ -42,7 +42,7 @@ export interface TimeLogWithContext {
 }
 
 /** Caller identity + permission state within the current project, returned
- * by GET /projects/:projectId/time-logs/me. `can_write_tasks` (tasks.write)
+ * by GET /projects/:projectId/time-logs/me. `can_write_tasks` (tasks:write)
  * gates whether to offer the "log time" form and any edit/delete controls
  * at all — it mirrors the same permission the log/edit/delete routes
  * themselves require. `can_manage_all` additionally lets an entry belonging
@@ -56,7 +56,7 @@ export interface TimeLogViewer {
 /** Caller's global permission state for the admin (cross-project) time
  * tracking page, returned by GET /time-logs/viewer-all. Unlike TimeLogViewer
  * there's no per-project ownership concept at this scope: `can_manage_all`
- * (the global time_logging.manage_all grant) is all-or-nothing across every
+ * (the global time_logging:manage_all grant) is all-or-nothing across every
  * row on the page, backed by the global-scope PATCH/DELETE
  * /time-logs/all/:logId routes rather than per-entry ownership. */
 export interface TimeLogViewerAll {

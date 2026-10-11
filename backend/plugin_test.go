@@ -608,7 +608,7 @@ func TestCreateTimeLog_OwnMemberID_AllowedWithoutManageAll(t *testing.T) {
 	}
 }
 
-// ── Ownership enforcement (time_logging.manage_all) ───────────────────────────
+// ── Ownership enforcement (time_logging:manage_all) ───────────────────────────
 
 func TestUpdateTimeLog_Forbidden_NotOwner(t *testing.T) {
 	tc := setupPlugin(t)
@@ -719,7 +719,7 @@ func TestDeleteTimeLog_ManageAll_AllowsOtherMembersEntries(t *testing.T) {
 // updateTimeLogGlobal/deleteTimeLogGlobal perform no in-handler permission
 // check of their own — like the other global-scope handlers in this file
 // (listAllTimeLogs, timeLogsSummaryAll, timeLogsUsersAll), they rely entirely
-// on the host's requirePermissions(scope=global, time_logging.manage_all)
+// on the host's requireActions(scope=global, time_logging:manage_all)
 // route gate, which plugintest.Context.Call does not simulate. These tests
 // exercise the handlers' own DB logic, not that gate.
 
@@ -916,7 +916,7 @@ func TestViewer_DefaultNoWriteTasks(t *testing.T) {
 
 func TestViewer_WriteTasksGranted(t *testing.T) {
 	tc := setupPlugin(t)
-	tc.Permissions.Grant("tasks.write")
+	tc.Permissions.Grant("tasks:write")
 
 	res := tc.Call("GET", "/time-logs/me", callerReq())
 	var env struct {
@@ -933,7 +933,7 @@ func TestViewer_WriteTasksGranted(t *testing.T) {
 // ── Manifest / route-table parity ─────────────────────────────────────────────
 //
 // The host only enforces a route's declared plugin.json middlewares
-// (optionalAuthn/requirePermissions/etc.) when the request path matches an
+// (optionalAuthn/requireActions/etc.) when the request path matches an
 // entry in plugin.json's backend.routes. If Init() registers a route here
 // that has no matching manifest entry (or the manifest path is wrong), the
 // host silently falls back to its weak default policy — optionalAuthn +

@@ -17,15 +17,13 @@ func nowStr() string {
 	return time.Now().UTC().Format(time.RFC3339Nano)
 }
 
-// permManageAllTimeLogs is declared twice in plugin.json — once with
-// scope "project" (grantable per project role) and once with scope
-// "global" (grantable instance-wide) — sharing this one key. Either grant
-// lets a caller create, edit, or delete time log entries attributed to other
-// project members; a global grant applies in every project because
-// paca.permission_check merges the caller's global and project permissions
-// for project-scoped checks. Without either, a caller may only act on their
-// own entries — see (*timeLoggingPlugin).canModify.
-const permManageAllTimeLogs = "time_logging.manage_all"
+// permManageAllTimeLogs is the IAM action letting a caller create, edit, or
+// delete time log entries attributed to other project members. It is checked
+// with paca.permission_check, which the host decides on project/<id> for a
+// project-scoped request: a role allowing it in that project, or one
+// allowing it everywhere ("project/*" or "*"), passes. Without it, a caller
+// may only act on their own entries — see (*timeLoggingPlugin).canModify.
+const permManageAllTimeLogs = "time_logging:manage_all"
 
 // timeLoggingPlugin implements plugin.Plugin.
 type timeLoggingPlugin struct {
