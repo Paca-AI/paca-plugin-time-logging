@@ -36,7 +36,7 @@ type projectTotal struct {
 // userTotalAll is a cross-project user time total, annotated with a display
 // name since the caller has no single project context to resolve it from
 // (mirrors why timeLogWithContext carries names inline too). Grouped by
-// users.id rather than project_members.id — see timeLogsUsersAll.
+// accounts.id rather than project_members.id — see timeLogsUsersAll.
 type userTotalAll struct {
 	UserID       string `json:"user_id"`
 	UserName     string `json:"user_name"`
@@ -773,7 +773,7 @@ func (p *timeLoggingPlugin) timeLogsSummaryAll(req *plugin.Request, res *plugin.
 	args := make([]any, 0, 3)
 	argN := 1
 	if userID != "" {
-		where = append(where, fmt.Sprintf("pm.user_id = $%d", argN))
+		where = append(where, fmt.Sprintf("pm.account_id = $%d", argN))
 		args = append(args, userID)
 		argN++
 	}
@@ -831,15 +831,15 @@ func (p *timeLoggingPlugin) timeLogsSummaryAll(req *plugin.Request, res *plugin.
 //
 // Supports optional query params: project_id, user_id, date_from, date_to
 // (spent_date bounds, inclusive, YYYY-MM-DD), page, page_size. Filtering by
-// user_id (users.id) rather than member_id (project_members.id) matters here
+// user_id (accounts.id, which is a user's own id) rather than member_id (project_members.id) matters here
 // specifically: the same physical person has a different project_members row
 // — and thus a different member_id — in every project they belong to, so a
 // member_id filter could only ever match one project's worth of that
 // person's entries. user_id is stable across projects, so one filter
 // selection covers all of a person's entries instance-wide. That requires
 // joining through project_members in the WHERE clause, so both queries below
-// carry the same project_members/users joins even though only the page query
-// needs project_members/users for display purposes.
+// carry the same project_members/accounts joins even though only the page query
+// needs project_members/accounts for display purposes.
 //
 // user_id filtering feeds into the same WHERE clause used by both the
 // aggregate and page queries below, so total_minutes always reflects it too.
@@ -858,7 +858,7 @@ func (p *timeLoggingPlugin) listAllTimeLogs(req *plugin.Request, res *plugin.Res
 		argN++
 	}
 	if userID != "" {
-		where = append(where, fmt.Sprintf("pm.user_id = $%d", argN))
+		where = append(where, fmt.Sprintf("pm.account_id = $%d", argN))
 		args = append(args, userID)
 		argN++
 	}
@@ -915,13 +915,13 @@ func (p *timeLoggingPlugin) listAllTimeLogs(req *plugin.Request, res *plugin.Res
 	pageResult, err := p.db.Query(
 		fmt.Sprintf(
 			`SELECT tl.id, pr.id AS project_id, pr.name AS project_name, tl.task_id, t.title AS task_title,
-			        tl.member_id, COALESCE(u.full_name, '') AS member_name,
+			        tl.member_id, COALESCE(ac.name, '') AS member_name,
 			        to_char(tl.spent_date, 'YYYY-MM-DD') AS spent_date, tl.minutes_spent, tl.note, tl.created_at
 			 FROM task_time_logs tl
 			 JOIN tasks t ON t.id = tl.task_id
 			 JOIN projects pr ON pr.id = t.project_id
 			 LEFT JOIN project_members pm ON pm.id = tl.member_id
-			 LEFT JOIN users u ON u.id = pm.user_id
+			 LEFT JOIN accounts ac ON ac.id = pm.account_id
 			 WHERE %s
 			 ORDER BY tl.spent_date DESC, tl.created_at DESC
 			 LIMIT $%d OFFSET $%d`, whereSQL, argN, argN+1),
@@ -966,7 +966,7 @@ func (p *timeLoggingPlugin) listAllTimeLogs(req *plugin.Request, res *plugin.Res
 // project context). Returns total minutes spent per user across every
 // project in the instance, so the admin UI can populate a "User" filter
 // without a global "list all members" call (plugins have no such call —
-// project_members are project-scoped). Grouped by users.id rather than
+// project_members are project-scoped). Grouped by accounts.id rather than
 // task_time_logs.member_id: the same person has a different member_id in
 // every project they belong to, so grouping by member_id would split one
 // person's total across multiple rows (one per project) instead of one row
@@ -1007,15 +1007,15 @@ func (p *timeLoggingPlugin) timeLogsUsersAll(req *plugin.Request, res *plugin.Re
 
 	result, err := p.db.Query(
 		fmt.Sprintf(
-			`SELECT u.id AS user_id, COALESCE(u.full_name, '') AS user_name,
+			`SELECT ac.id AS user_id, COALESCE(ac.name, '') AS user_name,
 			        SUM(tl.minutes_spent) AS minutes_spent
 			 FROM task_time_logs tl
 			 JOIN tasks t ON t.id = tl.task_id
 			 JOIN projects pr ON pr.id = t.project_id
 			 LEFT JOIN project_members pm ON pm.id = tl.member_id
-			 LEFT JOIN users u ON u.id = pm.user_id
+			 LEFT JOIN accounts ac ON ac.id = pm.account_id
 			 WHERE %s
-			 GROUP BY u.id, u.full_name
+			 GROUP BY ac.id, ac.name
 			 ORDER BY minutes_spent DESC`, whereSQL),
 		args...,
 	)
