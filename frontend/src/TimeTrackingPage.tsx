@@ -222,18 +222,21 @@ function TimeTrackingPageInner({ scope }: TimeTrackingPageProps) {
   // embedded by the backend (see TimeLogWithContext) — there's no single
   // project to resolve these against generically the way project scope does.
 
-  const { data: members = [] } = useQuery({
-    queryKey: ["plugin", PLUGIN_ID, "core", "members", projectId ?? ""],
-    queryFn: () => api.listMembers(),
+  // The member filter's options are a server-side search over the team (first
+  // page of matches), not the whole team.
+  const [memberSearch, setMemberSearch] = useState("");
+  const { data: memberOptionsPage } = useQuery({
+    queryKey: ["plugin", PLUGIN_ID, "core", "members", projectId ?? "", memberSearch],
+    queryFn: () => api.listMembers({ search: memberSearch, pageSize: 50 }),
     enabled: isProject,
+    placeholderData: keepPreviousData,
   });
+  const memberOptions = memberOptionsPage?.items ?? [];
   const { data: tasks = [] } = useQuery({
     queryKey: ["plugin", PLUGIN_ID, "core", "tasks", projectId ?? ""],
     queryFn: () => api.listTasks(),
     enabled: isProject,
   });
-  const memberName = (memberId: string) =>
-    members.find((m) => m.id === memberId)?.full_name ?? memberId;
   const taskTitle = (taskId: string) =>
     tasks.find((t) => t.id === taskId)?.title ?? taskId;
 
@@ -274,6 +277,26 @@ function TimeTrackingPageInner({ scope }: TimeTrackingPageProps) {
     placeholderData: keepPreviousData,
   });
 
+  // Names for the members that appear on this page of logs, looked up by id.
+  const logMemberIds = useMemo(
+    () =>
+      isProject
+        ? [...new Set(((logPage?.logs ?? []) as TimeLog[]).map((l) => l.member_id))].sort()
+        : [],
+    [isProject, logPage],
+  );
+  const { data: logMembersPage } = useQuery({
+    queryKey: ["plugin", PLUGIN_ID, "core", "members-by-id", projectId ?? "", logMemberIds.join(",")],
+    queryFn: () => api.listMembers({ ids: logMemberIds, pageSize: 100 }),
+    enabled: isProject && logMemberIds.length > 0,
+    placeholderData: keepPreviousData,
+  });
+  const memberNames = useMemo(
+    () => new Map((logMembersPage?.items ?? []).map((m) => [m.id, m.full_name || m.username])),
+    [logMembersPage],
+  );
+  const memberName = (memberId: string) => memberNames.get(memberId) ?? memberId;
+
   const rows: DisplayRow[] = useMemo(() => {
     const logs = logPage?.logs ?? [];
     if (isProject) {
@@ -299,7 +322,7 @@ function TimeTrackingPageInner({ scope }: TimeTrackingPageProps) {
       minutesSpent: l.minutes_spent,
       note: l.note,
     }));
-  }, [logPage, isProject, members, tasks]);
+  }, [logPage, isProject, memberNames, tasks]);
 
   const total = logPage?.total ?? 0;
   const totalMinutes = logPage?.total_minutes ?? 0;
@@ -448,6 +471,14 @@ function TimeTrackingPageInner({ scope }: TimeTrackingPageProps) {
                 >
                   Member
                 </label>
+                <input
+                  type="search"
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                  placeholder="Search members"
+                  aria-label="Search members"
+                  className="min-w-36 rounded-lg bg-muted/40 px-2.5 py-1.5 text-xs"
+                />
                 <select
                   id="time-tracking-member-filter"
                   value={memberFilter}
@@ -455,9 +486,13 @@ function TimeTrackingPageInner({ scope }: TimeTrackingPageProps) {
                   className="min-w-36 rounded-lg bg-muted/40 px-2.5 py-1.5 text-xs"
                 >
                   <option value="">All members</option>
-                  {members.map((m) => (
+                  {/* Keep the chosen member selectable even when the search no longer lists them. */}
+                  {memberFilter && !memberOptions.some((m) => m.id === memberFilter) && (
+                    <option value={memberFilter}>{memberName(memberFilter)}</option>
+                  )}
+                  {memberOptions.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.full_name}
+                      {m.full_name || m.username}
                     </option>
                   ))}
                 </select>
