@@ -2,8 +2,8 @@
   "id": "com.paca.time-logging",
   "displayName": "Time Logging",
   "description": "Lets project members manually log time spent on tasks (date, duration, note) and view per-member totals for a project.",
-  "version": "0.2.4",
-  "minCoreVersion": "v0.19.0",
+  "version": "0.2.5",
+  "minCoreVersion": "v0.19.1",
   "permissions": ["db.read", "db.write", "events.subscribe"],
   "customPermissions": [
     {

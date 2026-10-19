@@ -1,5 +1,5 @@
 import { PluginApiClient, PluginQueryClientProvider } from "@paca-ai/plugin-sdk-react";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   ChevronLeft,
@@ -232,13 +232,6 @@ function TimeTrackingPageInner({ scope }: TimeTrackingPageProps) {
     placeholderData: keepPreviousData,
   });
   const memberOptions = memberOptionsPage?.items ?? [];
-  const { data: tasks = [] } = useQuery({
-    queryKey: ["plugin", PLUGIN_ID, "core", "tasks", projectId ?? ""],
-    queryFn: () => api.listTasks(),
-    enabled: isProject,
-  });
-  const taskTitle = (taskId: string) =>
-    tasks.find((t) => t.id === taskId)?.title ?? taskId;
 
   // ── Main list query ────────────────────────────────────────────────────────
 
@@ -297,6 +290,29 @@ function TimeTrackingPageInner({ scope }: TimeTrackingPageProps) {
   );
   const memberName = (memberId: string) => memberNames.get(memberId) ?? memberId;
 
+  // Titles for the tasks that appear on this page of logs, fetched by id (the
+  // task list is paged, so it cannot be read whole to resolve names).
+  const logTaskIds = useMemo(
+    () =>
+      isProject
+        ? [...new Set(((logPage?.logs ?? []) as TimeLog[]).map((l) => l.task_id))].sort()
+        : [],
+    [isProject, logPage],
+  );
+  const taskQueries = useQueries({
+    queries: logTaskIds.map((taskId) => ({
+      queryKey: ["plugin", PLUGIN_ID, "core", "task", projectId ?? "", taskId],
+      queryFn: () => api.getTask(taskId),
+      staleTime: 60_000,
+    })),
+  });
+  const taskTitles = useMemo(
+    () => new Map(logTaskIds.map((id, i) => [id, taskQueries[i]?.data?.title] as const)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [logTaskIds, taskQueries.map((q) => q.data?.title).join("\u0000")],
+  );
+  const taskTitle = (taskId: string) => taskTitles.get(taskId) ?? taskId;
+
   const rows: DisplayRow[] = useMemo(() => {
     const logs = logPage?.logs ?? [];
     if (isProject) {
@@ -322,7 +338,7 @@ function TimeTrackingPageInner({ scope }: TimeTrackingPageProps) {
       minutesSpent: l.minutes_spent,
       note: l.note,
     }));
-  }, [logPage, isProject, memberNames, tasks]);
+  }, [logPage, isProject, memberNames, taskTitles]);
 
   const total = logPage?.total ?? 0;
   const totalMinutes = logPage?.total_minutes ?? 0;
